@@ -1,0 +1,130 @@
+---
+title: "Model"
+output: html_notebook
+---
+
+```{r}
+library(data.table)
+library(ggplot2)
+```
+Initialization of the individuals:
+
+  - First, it has to be set the number of individuals that the model will have.
+  - Each individual will be a vector of 4 components: the identity number, the 
+    duplication of the DNA, the generation, and the biovolume.
+  - The culture has also to be initialitzated, is a vector of the individuals.
+
+```{r}
+# the initial number of cells of the culture
+num_cell = 4500
+
+# initialization of the individuals variables
+ident <- matrix(1:num_cell, 1, num_cell)
+dupl <- matrix(0, 1, num_cell)
+gen <- matrix(0, 1, num_cell)
+biovol <- matrix(6000, 1, num_cell) + rnorm(num_cell, 0, 1000)
+
+# culture generation as a vector of individuals
+cultiu <- rbind(ident, biovol, dupl, gen)
+
+# plot of the initial biovolume distribution
+df <- data.frame(biovolum = cultiu[2,])
+inici = as.numeric(df[,1])
+hist(inici, breaks = 8, freq = FALSE, xlim = c(1000, 13000), xlab = "biovolume (µm^3)", ylab = "freq cells x 1.0e-5", main = "Initial distribution of Biovolumes", las = 1, yaxt='n')
+axis(side=2, at=seq(0, 0.00035, 0.00005), labels=seq(0,35,5))
+```
+Now the model:
+
+There will be 3 loops one inside the other. The most "exterior" one is the loop
+over the days, for each day it will also be a loop over the hours, and at each
+hour a loop over all the individuals of the culture.
+
+For each individual at each hour the next processes are performed:
+  - First, to check the reproduction conditions. If it fits the conditions then
+    it will duplicate and a new cell will be added to the culture
+  - Then each individual has to update its biovolume proportional to its surface
+
+In the end, the logarithmic scale of the number of individuals per day is printed. 
+Other results like the average biovolume per day or per hour or per day; the
+evolution of one particular individual, the biovolume distribution at a concret
+hour etc. can be also easily printed adding some lines to the code.
+```{r}
+# initialization of the days that the simulation will last
+dia <- 1
+dies_max <- 20
+
+# creation of the vector with the number of individuals per day
+n_indv <- dim(cultiu)[2]
+
+# definition of gamma parameter
+gam <- 0.05
+
+# initialization of the vector with the boundary biovolumes
+biovol_bound <- 8000
+bio_dup <- matrix(biovol_bound, 1, dies_max) + rnorm(dies_max, 0, 300)
+
+# starts the loop of the days
+while (dia <= dies_max) {
+  
+  # initialization of the different gamma paramater per hour
+  gama <- matrix(gam, 1, dies_max) + rnorm(12, 0, 0.001)
+  
+  # hours loop
+  for (j in 1:12) {
+    # each hour the cells will be visited in different order
+    ordre <- sample(1:dim(cultiu)[2],dim(cultiu)[2],replace=F)
+    
+    # histogram of the biovolume saved at each hour
+    df <- data.frame(biovolum = cultiu[2,])
+    biovolum = as.numeric(df[,1])
+    name = paste0('dia',paste0(dia, paste0('hora',paste0(j,".png"))))
+    png(name)
+    hist(biovolum, breaks = 8, freq = FALSE, xlim = c(1000, 13000), xlab = "biovolum (micrometres^3)", ylab = "freq cells") 
+    abline(v = 8000, col="red", lwd=3, lty=2) 
+    abline(v = 4000, col="red", lwd=3, lty=2)
+    dev.off()
+    
+    # cells loop
+    for (k in 1:dim(cultiu)[2]) {
+      i <- ordre[k]
+      
+      # DUPLICATION
+      # check if the cell biovolume is higher than the boundary one
+      if (cultiu[2,i] >= bio_dup[dia]) {
+        cultiu[3,i] = cultiu[3,i] + 1
+      }
+      
+      # check if the cell fulfills the duplication conditions
+      if (cultiu[3,i] == 2 & cultiu[4,i] <= 20) {
+        # update of the old cell
+        cultiu[2,i] = cultiu[2,i]/2 # the new biovolume
+        cultiu[3,i] = 0
+        cultiu[4,i] = cultiu[4,i] + 1 # new generation
+        
+        # initialization of the new cell
+        cultiu <- cbind(cultiu, c(dim(cultiu)[2] + 1, cultiu[2,i], 0, cultiu[4,i]))
+      }
+      
+      # INCOMES
+      # calculation of the surface area
+      superficie_i <- 4*pi*((3*cultiu[2,i])/(4*pi))^(2/3)
+      
+      # calculation of the new biovolume
+      cultiu[2,i] = cultiu[2,i] + gama[dia]*superficie_i
+    }
+  }
+  
+  # day update
+  dia = dia + 1
+  # vector with the number of individuals at the end of each day
+  n_indv <- append(n_indv, dim(cultiu)[2])
+}
+
+# graphic of log of the number of cells per day
+plot(log10(n_indv), type="o", col="blue", axes = FALSE, ann = FALSE, ylim = range(log10(n_indv)))
+box()
+axis(1, las= 1)
+axis(2, las= 1)
+title(xlab="Time (days)")
+title(ylab="ln(Number of cells)")
+```
